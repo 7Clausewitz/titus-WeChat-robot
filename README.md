@@ -269,6 +269,7 @@ def _store_message(self, username, message):
       听令，增加群组,
       听令，删除群组,
       听令，删除人物,
+      听令，列出命令,
       听令，列出列表, #这里是列出 listen_list 和 group_list，这个后面不用写值
       听令，修改问候窗口, #这里是更改 ai 自动找你聊天的窗口
       听令，修改设定, #这里是修改 ai 角色预设的地方
