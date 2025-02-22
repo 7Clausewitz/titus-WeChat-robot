@@ -190,7 +190,7 @@ def _store_message(self, username, message):
 文件基于硅基流动的api调用，如需要使用其他模型，请修改源码中调用api的def call_deepseek_api 函数
 
 ### 1.硅基流动注册：https://cloud.siliconflow.cn/i/HAOHHJPf
-注册后会增送大概100万token
+注册后会赠送大概100万token
 
 ### 2.硅基流动模型广场：https://cloud.siliconflow.cn/models
 
