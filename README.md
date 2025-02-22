@@ -16,7 +16,9 @@
 
 ### 2. 记忆管理系统
 #### 短期记忆库：
-#####ai会记录在该窗口你对ai的聊天记录和对方（群组）对ai的聊天信息。为了隐私安全，ai只会读取你呼唤他的消息记录（如：泰图斯，xxx），不会记录其他日常信息。
+
+##### ai会记录在该窗口你对ai的聊天记录和对方（群组）对ai的聊天信息。为了隐私安全，ai只会读取你呼唤他的消息记录（如：泰图斯，xxx），不会记录其他日常信息。
+
 ```python
 def _store_message(self, username, message):
     """消息存储与隐私过滤机制"""
@@ -40,7 +42,7 @@ def _store_message(self, username, message):
 ```
 #### 长期画像分析：
 #####ai会在你（或者在聊天框的对方）对他的聊天信息达到8条时，分析你的人物画像。记忆你的性格，特质，兴趣爱好。同时ai会在自己回答12条消息时，总结聊天内容。减少了上下文Token使用。
-    ```python
+```python
     def _store_message(self, username, message):
         """消息存储与触发分析"""
         with sqlite3.connect('memory.db') as conn:
@@ -172,16 +174,18 @@ def _store_message(self, username, message):
                 conn.rollback()
                 print(f"分析失败：{str(e)}")
                 raise
-                ```
-### 3. 自适应交互协议
+```
+ 
+### 3.自适应交互协议
 #### 上下文感知模型
     详见def _generate_reply(self, context, message)函数，可自行diy
-###4.微信快捷命令：可以直接在微信上发消息进行修改设置（详见教程），可以自行diy更多命令。命令编写逻辑为：
-            ```python
+    
+### 4.微信快捷命令：可以直接在微信上发消息进行修改设置（详见教程），可以自行diy更多命令。命令编写逻辑为：
+```python
             if content.startswith('听令，'): 为真
                 find_XXXX = extract_text_after_keyword(content, '听令，你的命令名字')为真
             if find_XXXX:为真
                 # 执行里面的命令逻辑
-            ```
+```
 
 
