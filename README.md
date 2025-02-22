@@ -37,6 +37,7 @@ def _store_message(self, username, message):
                 WHERE hash = ?
             )
         ''', (username, message, msg_hash, msg_hash))
+```
 #### 长期画像分析：
 #####ai会在你（或者在聊天框的对方）对他的聊天信息达到8条时，分析你的人物画像。记忆你的性格，特质，兴趣爱好。同时ai会在自己回答12条消息时，总结聊天内容。减少了上下文Token使用。
     ```python
@@ -171,6 +172,7 @@ def _store_message(self, username, message):
                 conn.rollback()
                 print(f"分析失败：{str(e)}")
                 raise
+                ```
 ### 3. 自适应交互协议
 #### 上下文感知模型
     详见def _generate_reply(self, context, message)函数，可自行diy
@@ -180,5 +182,6 @@ def _store_message(self, username, message):
                 find_XXXX = extract_text_after_keyword(content, '听令，你的命令名字')为真
             if find_XXXX:为真
                 # 执行里面的命令逻辑
+            ```
 
 
