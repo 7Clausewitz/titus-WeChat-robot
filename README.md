@@ -4,7 +4,7 @@
 ## 项目概述
 本解决方案通过wxauto库实现微信本地机器人，提供拟真对话体验与智能记忆管理。系统采用模块化设计，具备上下文感知、多级记忆存储和动态画像分析等核心功能，有效平衡隐私保护与智能交互需求。
 
-## 核心功能体系
+## 一、核心功能体系
 
 ### 1. 交互引擎
 - **场景无感调用**：通过特定唤醒词(如"泰图斯")在任意聊天界面触发助手
@@ -16,7 +16,6 @@
 
 ### 2. 记忆管理系统
 #### 短期记忆库：
-
 ##### ai会记录在该窗口你对ai的聊天记录和对方（群组）对ai的聊天信息。为了隐私安全，ai只会读取你呼唤他的消息记录（如：泰图斯，xxx），不会记录其他日常信息。
 
 ```python
@@ -41,7 +40,7 @@ def _store_message(self, username, message):
         ''', (username, message, msg_hash, msg_hash))
 ```
 #### 长期画像分析：
-#####ai会在你（或者在聊天框的对方）对他的聊天信息达到8条时，分析你的人物画像。记忆你的性格，特质，兴趣爱好。同时ai会在自己回答12条消息时，总结聊天内容。减少了上下文Token使用。
+##### ai会在你（或者在聊天框的对方）对他的聊天信息达到8条时，分析你的人物画像。记忆你的性格，特质，兴趣爱好。同时ai会在自己回答12条消息时，总结聊天内容。减少了上下文Token使用。
 ```python
     def _store_message(self, username, message):
         """消息存储与触发分析"""
@@ -187,5 +186,72 @@ def _store_message(self, username, message):
             if find_XXXX:为真
                 # 执行里面的命令逻辑
 ```
+## 二、使用教程
+文件基于硅基流动的api调用，如需要使用其他模型，请修改源码中调用api的def call_deepseek_api 函数
 
+### 1.硅基流动注册：https://cloud.siliconflow.cn/i/HAOHHJPf
+注册后会增送大概100万token
+
+### 2.硅基流动模型广场：https://cloud.siliconflow.cn/models
+
+### 3.创建api：
+![image](https://github.com/user-attachments/assets/df8a466d-b3eb-4f48-bc71-6417bd0cbfbe)
+### 4.用记事本打开config.json文件
+![image](https://github.com/user-attachments/assets/2189d75e-886d-4c5f-9075-85bc8eb11435)
+### 5.复制你要选择的模型（见官网文档，小白选deepseek-ai/DeepSeek-V3就对了）：
+
+      如：
+      deepseek-ai
+      DeepSeek-R1,deepseek-ai
+      DeepSeek-V3,deepseek-ai
+      DeepSeek-R1-Distill-Llama-70B, deepseek-ai
+      DeepSeek-R1-Distill-Qwen-32B, deepseek-ai
+      DeepSeek-R1-Distill-Qwen-14B, deepseek-ai
+      DeepSeek-R1-Distill-Llama-8B, deepseek-ai
+      DeepSeek-R1-Distill-Qwen-7B, deepseek-ai
+      DeepSeek-R1-Distill-Qwen-1.5B
+
+复制到箭头位置，保留引号（用v3就不用管）
+![image](https://github.com/user-attachments/assets/f1d23be0-c2e8-4a44-be2d-650634c37ccf)
+
+
+### 6.登录电脑微信，打开程序，对文件传输助手说：泰图斯，你好。若回复，则设置完成。
+#### 先登录微信，再打开软件！
+#### 打开后ai在操作时，不要动鼠标
+#### 不要关闭ai打开的聊天窗口，可以最小化
+#### 请注意，呼唤时一定是：xxx（呼唤他的名字），xxx（你的消息）。逗号不可省去
+### 6.Config.Json配置说明：
+      {
+          "DATABASE": {
+              "api_key": "api_key_here",	 #你的apikey信息
+              "base_url": "https://api.siliconflow.cn/v1/chat/completions",
+              "master": "your_name", 	 #你的名字，或者你希望机器人叫你的名字
+              "model_set": "deepseek-ai/DeepSeek-V3",
+              "prompt_set": "", 		#这里是机器人的角色设定，你可以让他扮演任何角色，只								需要写在引号内，我已经预制了一个角色，不懂不要改。
+      如果要改记住，文字只能一行，多行会报错
+              "called_name": "\u6cf0\u56fe\u65af",		#你呼喊他的名字
+              "calling_you_window": "文件传输助手",	#这里是ai自动找你聊天的窗口名称，建												议默认设置为文件传输助手，当然你												可以有你的小情趣
+              "auto_call":0	#是否时不时找你聊天，默认关闭，如果想开启，改为1（早八点到						晚上12点，放心他不黏人）
+          }
+      }
+### 7.group_list.json说明
+ 			[]      #加入你想接入机器人的群聊如：”3222胡儿贤父群”。记住用双引号						引用，如果有两个即以上，中间加逗号，记住要用英文逗号和引						号!(, “”)
+### 8.listen_list.json 说明
+      ["文件传输助手"]  #加入你想接入机器人的聊天个人如："文件传输助手",”xxx”。记住用					双引号引用，如果有两个即以上，中间加逗号，记住要用英文逗					号和引号!(, “”)
+当然如果上述listen_list.json 和group_list.json文件设置你觉得麻烦，可以在接入后在微信上发送快捷命令修改，见下
+### 9.微信快捷命令：
+对任何你接入的窗口都可以使用，但我建议你只对文件传输助手发送信息，不要让其他人知道如何修改你的机器人。
+命令如下，效果为字面意思：
+      '听令，增加人物',
+      '听令，增加群组',
+      '听令，删除群组',
+      '听令，删除人物',
+      '听令，列出列表',  #这里是列出listen_list和group_list，这个后面不用写值
+      '听令，修改问候窗口', #这里是更改ai自动找你聊天的窗口
+      '听令，修改设定'    #这里是修改ai角色预设的地方
+使用方式：
+对文件传输助手发消息：听令，XXXX后面跟你要修改的值
+比如：听令，增加人物张三
+听令，修改问候窗口文件传输助手
+听令，修改设定请你扮演陈桂林
 
