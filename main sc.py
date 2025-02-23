@@ -225,6 +225,13 @@ def init_database():
             analysis_count INTEGER DEFAULT 0
         )
     ''')
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS user_message_count (
+        username TEXT PRIMARY KEY,
+        message_count INTEGER DEFAULT 0
+    )
+    ''')
+
 
     conn.commit()
     conn.close()
@@ -278,11 +285,21 @@ class MessageStore:
                     VALUES (?, ?)
                 ''', (username, message))
 
-                # 获取当前最新消息ID
                 cursor.execute('''
-                    SELECT MAX(id) FROM user_messages WHERE username = ?
+                    INSERT OR IGNORE INTO user_message_count (username, message_count)
+                    VALUES (?, 0)
                 ''', (username,))
+
+                cursor.execute('''
+                    UPDATE user_message_count
+                    SET message_count = message_count + 1
+                    WHERE username = ?
+                ''', (username,))
+
+                # 获取当前最新消息ID
+                cursor.execute('SELECT message_count FROM user_message_count WHERE username = ?', (username,))
                 latest_id = cursor.fetchone()[0]
+
 
                 # 计算未分析消息数
                 cursor.execute('''
@@ -299,7 +316,7 @@ class MessageStore:
                     batches = unanalyzed_count // 12
                     for i in range(batches):
                         batch_max_id = last_analyzed + (i + 1) * 12
-                        AnalysisEngine().request_analysis(username, batch_max_id)
+                        AnalysisEngine().request_analysis(username,last_analyzed,batch_max_id)
 
                 conn.commit()
 
@@ -326,9 +343,9 @@ class AnalysisEngine:
         """分析工作线程"""
         def worker():
             while True:
-                priority, username = self.task_queue.get()
+                priority, username, last_analyzed = self.task_queue.get()
                 try:
-                    self._analyze_user(username)
+                    self._analyze_user(username,last_analyzed)
                 except Exception as e:
                     print(f"分析失败: {str(e)}")
                 finally:
@@ -337,11 +354,11 @@ class AnalysisEngine:
         for _ in range(3):  # 3个工作线程
             threading.Thread(target=worker, daemon=True).start()
 
-    def request_analysis(self, username, priority=1):
+    def request_analysis(self, username,last_analyzed,priority=1):
         """提交分析请求"""
-        self.task_queue.put((priority, username))
+        self.task_queue.put((priority, username,last_analyzed))
 
-    def _analyze_user(self, username):
+    def _analyze_user(self, username,last_analyzed):
         """执行分析的核心逻辑"""
         with sqlite3.connect('memory.db') as conn:
             cursor = conn.cursor()
@@ -353,6 +370,8 @@ class AnalysisEngine:
                 WHERE username = ?
             ''', (username,))
             profile_data = cursor.fetchone()
+            last_analyzed = last_analyzed +12
+
 
             current_profile = json.loads(profile_data[0]) if profile_data and profile_data[0] else {}
             last_id = profile_data[1] if profile_data else 0
@@ -366,26 +385,26 @@ class AnalysisEngine:
             ''', (username,))
             new_messages = cursor.fetchall()[::-1]  # 倒序恢复时间顺序
             # 消息验证
-            if len(new_messages) != 12:
-                print(f"消息不足12条，当前：{len(new_messages)}")
-                return
+            # if len(new_messages) != 12:
+            #     print(f"消息不足12条，当前：{len(new_messages)}")
+            #     return
 
             # 类型校验
-            try:
-                # 提取消息ID和内容
-                msg_ids = [int(msg[0]) for msg in new_messages]
-                message_texts = [str(msg[1]) for msg in new_messages]
-                min_id, max_id = min(msg_ids), max(msg_ids)
-            except (ValueError, IndexError) as e:
-                print(f"消息格式错误：{str(e)}")
-                return
+            # try:
+            #     # 提取消息ID和内容
+            #     msg_ids = [int(msg[0]) for msg in new_messages]
+            #     message_texts = [str(msg[1]) for msg in new_messages]
+            #     min_id, max_id = min(msg_ids), max(msg_ids)
+            # except (ValueError, IndexError) as e:
+            #     print(f"消息格式错误：{str(e)}")
+            #     return
 
-            # 检查是否已处理
-            cursor.execute('SELECT last_analyzed_id FROM user_profiles WHERE username = ?', (username,))
-            last_analyzed = cursor.fetchone()[0] or 0
-            if last_analyzed >= min_id:
-                print(f"消息{min_id}-{max_id}已处理过")
-                return
+            # # 检查是否已处理
+            # cursor.execute('SELECT last_analyzed_id FROM user_profiles WHERE username = ?', (username,))
+            # last_analyzed = cursor.fetchone()[0] or 0
+            # if last_analyzed >= min_id:
+            #     print(f"消息{min_id}-{max_id}已处理过")
+            #     return
             not_group = True
             if username and username[0].lower() == 's':
                 origin_username = username[4:]
@@ -415,14 +434,9 @@ class AnalysisEngine:
 
 
             # 调用AI接口
-            try:
-                new_profile = self._get_ai_analysis(analysis_prompt)
-                self._update_profile(cursor, username, new_profile, max_id)
-                conn.commit()
-            except Exception as e:
-                conn.rollback()
-                print(f"分析失败：{str(e)}")
-                raise
+            new_profile = self._get_ai_analysis(analysis_prompt)
+            self._update_profile(cursor, username, new_profile,last_analyzed)
+            conn.commit()
 
     def _build_prompt(self, current_profile, new_messages):
         """构建分析提示"""
@@ -494,7 +508,7 @@ class AnalysisEngine:
         1. 必须包含所有指定字段
         2. 不使用任何注释或额外文本
         3. 确保双引号闭合
-        4. 确保没有多余文本,也不要有任何多余的换行
+        4. 确保没有多余文本,也不要有任何多余的换行，前缀和后缀，完全和参考生成格式。
         生成格式：
         {{
             "name": "名称1/名称2（字符串）",
@@ -535,7 +549,7 @@ class AnalysisEngine:
         1. 必须包含所有指定字段
         2. 不使用任何注释或额外文本
         3. 确保双引号闭合
-        4. 确保没有多余文本,也不要有任何多余的换行
+        4. 确保没有多余文本,也不要有任何多余的换行,前缀和后缀，完全和参考生成格式。
         生成格式：
         {{
             "name": "名称（字符串）",
@@ -590,9 +604,8 @@ class AnalysisEngine:
 
 # 记忆调用系统 --------------------------------------------------
 class MemorySystem:
-    @lru_cache(maxsize=100)
     def get_profile(self, username):
-        """获取当前用户画像（带缓存）"""
+        """获取当前用户画像"""
         with sqlite3.connect('memory.db') as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -601,6 +614,7 @@ class MemorySystem:
             ''', (username,))
             result = cursor.fetchone()
             return json.loads(result[0]) if result and result[0] else {}
+
 
     def get_recent_messages(self, username, limit=8):
         """获取近期消息"""
@@ -679,7 +693,7 @@ class ChatService:
             'user': username,
             'long_term_ob': long_term_ob,
             'short_term_ob': short_term_ob,
-            'short_term_ai':self.memory.get_recent_messages(origin_username+'ai',limit=12),
+            'short_term_ai':self.memory.get_recent_messages(origin_username+'ai',limit=8),
             'long_term_ai':self.memory.get_profile(origin_username+'ai')
         }
 
@@ -688,7 +702,7 @@ class ChatService:
         prompt = f"""
 请参考用户档案与画像，同时参考设定进行回答
 用户在发生信息时，会以”name：message time“的形式发送（阅读信息时请参考）
-在回复时，请你像真人使用网络聊天工具一样，一条一条发送信息，请用%符号分段你要说的话,文字中间不要有空的换行。（示例：你好，你今天怎么样%有什么我可以帮助你的吗？）
+在回复时，请你像真人使用网络聊天工具一样，一条一条发送信息，请用%符号分段你要说的话（你的聊天记录消息格式也是如此）,文字中间不要有空的换行。（示例：你好，你今天怎么样%有什么我可以帮助你的吗？）
 语言风格：
 1. 你使用口语进行表达，比如会使用一些语气词和口语连接词，如“嗯、啊、当然、那个”，等来增强口语风格。
 2. 你可以将动作、神情语气、心理活动、故事背景放在（）中来表示，为对话提供补充信息。
@@ -704,7 +718,7 @@ class ChatService:
 四、另一个在聊天中的用户的画像档案（你是两人聊天中的第三者）,请同时参考：[
 {json.dumps(context['long_term_ob'], indent=2, ensure_ascii=False)}]
 
-五、在聊天中，你回复的消息记录,请同时参考：[
+五、在聊天中，你回复的消息记录,请同时参考：（仅供参考，禁止重复自己的话）[
 {chr(10).join([f"{i + 1}. {msg}" for i, msg in enumerate(context['short_term_ai'])])}]
 
 六、在聊天中，你回复的消息记录的总结,请同时参考：[
@@ -720,7 +734,7 @@ class ChatService:
             response = call_deepseek_api(prompt, model_set, API)
             return response['choices'][0]['message']['content']
         except Exception as e:
-            print(f"群聊回复生成失败: {str(e)}")
+            print(f"回复生成失败: {str(e)}")
             return "抱歉，我暂时无法生成回复。"
 
     def _group_reply(self, context, message):
@@ -730,7 +744,7 @@ class ChatService:
 请注意这是一个组群聊消息的信息，其中一个档案是{master}的档案，一个是这个群聊中其他多个用户的档案（你会在开头看见他们的名字），当不同的人呼叫你时（参考当前信息），你将针对这个用户发出的信息进行回答
 请参考用户档案与画像，同时参考设定进行回答
 用户在发生信息时，会以”name：message time“的形式发送（阅读信息时请参考）
-在回复时，请你像真人使用网络聊天工具一样，一条一条发送信息，请用%符号分段你要说的话,文字中间不要有空的换行。（示例：你好，你今天怎么样%有什么我可以帮助你的吗？）
+在回复时，请你像真人使用网络聊天工具一样，一条一条发送信息，请用%符号分段你要说的话（你的聊天记录消息格式也是如此）,文字中间不要有空的换行。（示例：你好，你今天怎么样%有什么我可以帮助你的吗？）
 语言风格：
 1. 你使用口语进行表达，比如会使用一些语气词和口语连接词，如“嗯、啊、当然、那个”，等来增强口语风格。
 2. 你可以将动作、神情语气、心理活动、故事背景放在（）中来表示，为对话提供补充信息。
@@ -746,7 +760,7 @@ class ChatService:
 四、另一个在聊天中的用户的画像档案（你是两人聊天中的第三者）,请同时参考：[
 {json.dumps(context['long_term_ob'], indent=2, ensure_ascii=False)}]
 
-五、在聊天中，你回复的消息记录,请同时参考：[
+五、在聊天中，你回复的消息记录,请同时参考（仅供参考，禁止重复自己的话）：[
 {chr(10).join([f"{i + 1}. {msg}" for i, msg in enumerate(context['short_term_ai'])])}]
 
 六、在聊天中，你回复的消息记录的总结,请同时参考：[
@@ -761,14 +775,14 @@ class ChatService:
             response = call_deepseek_api(prompt, model_set, API)
             return response['choices'][0]['message']['content']
         except Exception as e:
-            print(f"群聊回复生成失败: {str(e)}")
+            print(f"回复生成失败: {str(e)}")
             return "抱歉，我暂时无法生成回复。"
 
     def _auto_ask_(self, context):
         prompt = f"""
 请参考用户档案与画像，同时参考设定，发出主动寻找已知用户聊天的消息(可以是打招呼，问候，关系，提起新话题，但请不要重复用户和自己的话语)
 用户在发生信息时，会以”name：message time“的形式发送（阅读信息时请参考）
-在回复时，请你像真人使用网络聊天工具一样，一条一条发送信息，请用%符号分段你要说的话,文字中间不要有空的换行。（示例：你好，你今天怎么样%有什么我可以帮助你的吗？）
+在回复时，请你像真人使用网络聊天工具一样，一条一条发送信息，请用%符号分段你要说的话（你的聊天记录消息格式也是如此）,文字中间不要有空的换行。（示例：你好，你今天怎么样%有什么我可以帮助你的吗？）
 语言风格：
 1. 你使用口语进行表达，比如会使用一些语气词和口语连接词，如“嗯、啊、当然、那个”，等来增强口语风格。
 2. 你可以将动作、神情语气、心理活动、故事背景放在（）中来表示，为对话提供补充信息。
@@ -784,7 +798,7 @@ class ChatService:
 四、另一个在聊天中的用户的画像档案（你是两人聊天中的第三者）,请同时参考：[
 {json.dumps(context['long_term_ob'], indent=2, ensure_ascii=False)}]
 
-五、在聊天中，你回复的消息记录,请同时参考：[
+五、在聊天中，你回复的消息记录,请同时参考（仅供参考，禁止重复自己的话）：[
 {chr(10).join([f"{i + 1}. {msg}" for i, msg in enumerate(context['short_term_ai'])])}]
 
 六、在聊天中，你回复的消息记录的总结,请同时参考：[
@@ -797,7 +811,7 @@ class ChatService:
             response = call_deepseek_api(prompt, model_set, API)
             return response['choices'][0]['message']['content']
         except Exception as e:
-            print(f"群聊回复生成失败: {str(e)}")
+            print(f"回复生成失败: {str(e)}")
             return "抱歉，我暂时无法生成回复。"
 
 
